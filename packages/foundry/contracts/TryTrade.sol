@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "openzeppelin/contracts/access/Ownable.sol";
-import "openzeppelin/contracts/utils/Counters.sol";
+interface IMockPriceFeed {
+    function getPriceAtTimestamp(string memory _asset, uint256 _timestamp) external view returns (uint256 price, uint256 timestamp);
+    function getLatestPrice(string memory _asset) external view returns (uint256 price, uint256 timestamp, uint256 roundId);
+    function decimals(string memory _asset) external view returns (uint8);
+}
 
 /**
  * @title TryTrade
@@ -21,6 +25,13 @@ contract TryTrade is ReentrancyGuard, Ownable {
     uint256 public constant FIRST_PLACE_PERCENTAGE = 50;
     uint256 public constant SECOND_PLACE_PERCENTAGE = 30;
     uint256 public constant THIRD_PLACE_PERCENTAGE = 20;
+
+    // Token structure
+    struct Token {
+        string symbol;
+        address contractAddress;
+        bool isActive;
+    }
 
     // Structs
     struct League {
@@ -44,7 +55,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     }
 
     struct Portfolio {
-        mapping(string => uint256) allocations; // token addr => allocated units
+        mapping(string => uint256) allocations; // token symbol => allocated units
         string[] tokens; // list of allocated tokens
         uint256 totalAllocated;
         bool isSubmitted;
@@ -69,8 +80,12 @@ contract TryTrade is ReentrancyGuard, Ownable {
     // State variables
     mapping(uint256 => League) public leagues;
     mapping(address => uint256[]) public userLeagues;
-    string[] public supportedTokens;
-    mapping(string => bool) public isSupportedToken;
+    mapping(string => Token) public supportedTokens; // symbol => Token struct
+    string[] public tokenSymbols; // array of supported token symbols
+    mapping(string => bool) public isTokenSupported;
+
+    // Price feed contract
+    IMockPriceFeed public priceFeed;
 
     // Events
     event LeagueCreated(
@@ -109,6 +124,20 @@ contract TryTrade is ReentrancyGuard, Ownable {
         uint256 amount
     );
 
+    event TokenAdded(
+        string indexed symbol,
+        address indexed contractAddress
+    );
+
+    event TokenRemoved(
+        string indexed symbol
+    );
+
+    event PriceFeedUpdated(
+        address indexed oldPriceFeed,
+        address indexed newPriceFeed
+    );
+
     // Modifiers
     modifier leagueExists(uint256 _leagueId) {
         require(_leagueId > 0 && _leagueId <= _leagueIds.current(), "League does not exist");
@@ -127,13 +156,36 @@ contract TryTrade is ReentrancyGuard, Ownable {
         _;
     }
 
-    constructor() {
-        // Initialize with common cryptocurrency tokens
-        supportedTokens = ["ETH", "WBTC"];
+    constructor(address _priceFeed) {
+        require(_priceFeed != address(0), "Price feed address cannot be zero");
+        priceFeed = IMockPriceFeed(_priceFeed);
 
-        for (uint i = 0; i < supportedTokens.length; i++) {
-            isSupportedToken[supportedTokens[i]] = true;
-        }
+        // Initialize with common cryptocurrency tokens
+        _addToken("ETH", address(0)); // ETH uses zero address
+        _addToken("WBTC", 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599); // Example WBTC address on mainnet
+    }
+
+    /**
+     * @dev Internal function to add a token
+     */
+    function _addToken(string memory _symbol, address _contractAddress) internal {
+        supportedTokens[_symbol] = Token({
+            symbol: _symbol,
+            contractAddress: _contractAddress,
+            isActive: true
+        });
+        tokenSymbols.push(_symbol);
+        isTokenSupported[_symbol] = true;
+    }
+
+    /**
+     * @dev Update price feed contract address
+     */
+    function setPriceFeed(address _priceFeed) external onlyOwner {
+        require(_priceFeed != address(0), "Price feed address cannot be zero");
+        address oldPriceFeed = address(priceFeed);
+        priceFeed = IMockPriceFeed(_priceFeed);
+        emit PriceFeedUpdated(oldPriceFeed, _priceFeed);
     }
 
     /**
@@ -240,7 +292,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
         // Set new allocations
         for (uint i = 0; i < _tokens.length; i++) {
-            require(isSupportedToken[_tokens[i]], "Token not supported");
+            require(isTokenSupported[_tokens[i]], "Token not supported");
             require(_allocations[i] > 0, "Allocation must be greater than 0");
 
             portfolio.allocations[_tokens[i]] = _allocations[i];
@@ -257,14 +309,53 @@ contract TryTrade is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Finalize league and distribute prizes (only owner can call for MVP)
-     * @notice In production, this would integrate with price oracles
+     * @dev Calculate portfolio return percentage using price feed
      */
-    function finalizeLeague(
+    function calculatePortfolioReturn(
         uint256 _leagueId,
-        address[] memory _participants,
-        uint256[] memory _returns
-    )
+        address _participant
+    ) public view returns (uint256) {
+        League storage league = leagues[_leagueId];
+        Portfolio storage portfolio = league.portfolios[_participant];
+
+        require(portfolio.isSubmitted, "Portfolio not submitted");
+
+        uint256 totalStartValue = 0;
+        uint256 totalEndValue = 0;
+
+        for (uint i = 0; i < portfolio.tokens.length; i++) {
+            string memory token = portfolio.tokens[i];
+            uint256 allocation = portfolio.allocations[token];
+
+            // Get start and end prices from price feed
+            (uint256 startPrice, ) = priceFeed.getPriceAtTimestamp(token, league.startTime);
+            (uint256 endPrice, ) = priceFeed.getPriceAtTimestamp(token, league.endTime);
+
+            // Get token decimals for proper calculation
+            uint8 tokenDecimals = priceFeed.decimals(token);
+
+            // Calculate value for this allocation
+            uint256 startValue = (allocation * startPrice) / (10 ** tokenDecimals);
+            uint256 endValue = (allocation * endPrice) / (10 ** tokenDecimals);
+
+            totalStartValue += startValue;
+            totalEndValue += endValue;
+        }
+
+        if (totalStartValue == 0) return 0;
+
+        // Calculate return percentage in basis points (10000 = 100%)
+        if (totalEndValue >= totalStartValue) {
+            return ((totalEndValue - totalStartValue) * 10000) / totalStartValue;
+        } else {
+            return 0; // No negative returns for this MVP
+        }
+    }
+
+    /**
+     * @dev Finalize league with automatic price fetching from price feed
+     */
+    function finalizeLeague(uint256 _leagueId)
     external
     onlyOwner
     leagueExists(_leagueId)
@@ -275,32 +366,40 @@ contract TryTrade is ReentrancyGuard, Ownable {
         require(league.isActive, "League is not active");
         require(block.timestamp > league.endTime, "League has not ended yet");
         require(!league.isFinalized, "League already finalized");
-        require(_participants.length == _returns.length, "Arrays length mismatch");
         require(league.currentParticipants >= 3, "Need at least 3 participants");
 
-        // Store final returns
-        for (uint i = 0; i < _participants.length; i++) {
-            require(league.hasJoined[_participants[i]], "Invalid participant");
-            league.finalScores[_participants[i]] = _returns[i];
+        // Calculate pnls for all participants
+        address[] memory participants = league.participants;
+        uint256[] memory pnls = new uint256[](participants.length);
+
+        for (uint i = 0; i < participants.length; i++) {
+            if (league.portfolios[participants[i]].isSubmitted) {
+                pnls[i] = calculatePortfolioReturn(_leagueId, participants[i]);
+                league.finalScores[participants[i]] = pnls[i];
+            } else {
+                pnls[i] = 0; // No portfolio submitted = 0 return
+                league.finalScores[participants[i]] = 0;
+            }
         }
 
-        // Find top 3 performers
-        address[] memory sortedParticipants = _sortParticipantsByReturns(_leagueId, _participants, _returns);
+        // Sort participants by returns
+        address[] memory sortedParticipants = _sortParticipantsByReturns(participants, pnls);
 
+        // Set winners (top 3)
         league.winners = new address[](3);
-        league.winners[0] = sortedParticipants[0]; // 1st place
-        league.winners[1] = sortedParticipants[1]; // 2nd place
-        league.winners[2] = sortedParticipants[2]; // 3rd place
+        for (uint i = 0; i < 3 && i < sortedParticipants.length; i++) {
+            league.winners[i] = sortedParticipants[i];
+        }
 
-        // Calculate prizes
+        // Calculate and distribute prizes
         uint256[] memory prizes = new uint256[](3);
         prizes[0] = (league.prizePool * FIRST_PLACE_PERCENTAGE) / 100;
         prizes[1] = (league.prizePool * SECOND_PLACE_PERCENTAGE) / 100;
         prizes[2] = (league.prizePool * THIRD_PLACE_PERCENTAGE) / 100;
 
         // Distribute prizes
-        for (uint i = 0; i < 3; i++) {
-            if (prizes[i] > 0) {
+        for (uint i = 0; i < 3 && i < league.winners.length; i++) {
+            if (league.winners[i] != address(0) && prizes[i] > 0) {
                 (bool success, ) = payable(league.winners[i]).call{value: prizes[i]}("");
                 require(success, "Prize transfer failed");
 
@@ -318,17 +417,16 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Sort participants by returns (descending order)
      */
     function _sortParticipantsByReturns(
-        uint256 _leagueId,
         address[] memory _participants,
-        uint256[] memory _returns
+        uint256[] memory _pnls
     ) private pure returns (address[] memory) {
         address[] memory sortedParticipants = new address[](_participants.length);
-        uint256[] memory sortedReturns = new uint256[](_returns.length);
+        uint256[] memory sortedReturns = new uint256[](_pnls.length);
 
         // Copy arrays
         for (uint i = 0; i < _participants.length; i++) {
             sortedParticipants[i] = _participants[i];
-            sortedReturns[i] = _returns[i];
+            sortedReturns[i] = _pnls[i];
         }
 
         // Simple bubble sort (for MVP - optimize for production)
@@ -350,6 +448,23 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
         return sortedParticipants;
     }
+
+    /**
+     * @dev Get current price from price feed
+     */
+    function getCurrentPrice(string memory _asset) external view returns (uint256 price, uint256 timestamp) {
+        (price, timestamp, ) = priceFeed.getLatestPrice(_asset);
+        return (price, timestamp);
+    }
+
+    /**
+     * @dev Get historical price from price feed
+     */
+    function getHistoricalPrice(string memory _asset, uint256 _timestamp) external view returns (uint256 price, uint256 timestamp) {
+        return priceFeed.getPriceAtTimestamp(_asset, _timestamp);
+    }
+
+    // ... (rest of the getter functions remain the same as in the previous version)
 
     /**
      * @dev Get league information
@@ -404,6 +519,19 @@ contract TryTrade is ReentrancyGuard, Ownable {
     }
 
     /**
+     * @dev Get participant's final score
+     */
+    function getParticipantScore(uint256 _leagueId, address _participant)
+    external
+    view
+    leagueExists(_leagueId)
+    returns (uint256)
+    {
+        require(leagues[_leagueId].isFinalized, "League not finalized");
+        return leagues[_leagueId].finalScores[_participant];
+    }
+
+    /**
      * @dev Get user's portfolio for a league
      */
     function getUserPortfolio(uint256 _leagueId, address _user)
@@ -436,48 +564,80 @@ contract TryTrade is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Get supported tokens
+     * @dev Get supported tokens with their contract addresses
      */
     function getSupportedTokens()
     external
     view
-    returns (string[] memory)
+    returns (string[] memory symbols, address[] memory addresses)
     {
-        return supportedTokens;
+        symbols = new string[](tokenSymbols.length);
+        addresses = new address[](tokenSymbols.length);
+
+        uint256 activeCount = 0;
+        for (uint i = 0; i < tokenSymbols.length; i++) {
+            if (supportedTokens[tokenSymbols[i]].isActive) {
+                symbols[activeCount] = supportedTokens[tokenSymbols[i]].symbol;
+                addresses[activeCount] = supportedTokens[tokenSymbols[i]].contractAddress;
+                activeCount++;
+            }
+        }
+
+        // Resize arrays to only include active tokens
+        assembly {
+            mstore(symbols, activeCount)
+            mstore(addresses, activeCount)
+        }
+    }
+
+    /**
+     * @dev Get token info by symbol
+     */
+    function getTokenInfo(string memory _symbol)
+    external
+    view
+    returns (Token memory)
+    {
+        require(isTokenSupported[_symbol], "Token not supported");
+        return supportedTokens[_symbol];
     }
 
     /**
      * @dev Add supported token (only owner)
      */
-    function addSupportedToken(string memory _token)
+    function addSupportedToken(string memory _symbol, address _contractAddress)
     external
     onlyOwner
     {
-        require(!isSupportedToken[_token], "Token already supported");
+        require(!isTokenSupported[_symbol], "Token already supported");
+        require(bytes(_symbol).length > 0, "Symbol cannot be empty");
 
-        supportedTokens.push(_token);
-        isSupportedToken[_token] = true;
+        _addToken(_symbol, _contractAddress);
+        emit TokenAdded(_symbol, _contractAddress);
     }
 
     /**
      * @dev Remove supported token (only owner)
      */
-    function removeSupportedToken(string memory _token)
+    function removeSupportedToken(string memory _symbol)
     external
     onlyOwner
     {
-        require(isSupportedToken[_token], "Token not supported");
+        require(isTokenSupported[_symbol], "Token not supported");
 
-        isSupportedToken[_token] = false;
+        supportedTokens[_symbol].isActive = false;
+        isTokenSupported[_symbol] = false;
 
-        // Remove from array
-        for (uint i = 0; i < supportedTokens.length; i++) {
-            if (keccak256(bytes(supportedTokens[i])) == keccak256(bytes(_token))) {
-                supportedTokens[i] = supportedTokens[supportedTokens.length - 1];
-                supportedTokens.pop();
+        // Remove from tokenSymbols array
+        for (uint i = 0; i < tokenSymbols.length; i++) {
+            if (keccak256(bytes(tokenSymbols[i])) == keccak256(bytes(_symbol))) {
+                tokenSymbols[i] = tokenSymbols[tokenSymbols.length - 1];
+                tokenSymbols.pop();
                 break;
             }
         }
+
+        emit TokenRemoved(_symbol);
     }
 
     /**
@@ -485,5 +645,13 @@ contract TryTrade is ReentrancyGuard, Ownable {
      */
     function getTotalLeagues() external view returns (uint256) {
         return _leagueIds.current();
+    }
+
+    /**
+     * @dev Emergency withdraw function (only owner)
+     */
+    function emergencyWithdraw() external onlyOwner {
+        (bool success, ) = payable(owner()).call{value: address(this).balance}("");
+        require(success, "Emergency withdraw failed");
     }
 }
