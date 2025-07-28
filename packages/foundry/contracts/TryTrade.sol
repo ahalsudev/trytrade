@@ -16,9 +16,8 @@ interface IMockPriceFeed {
  * @notice Allows users to create and participate in fantasy trading leagues
  */
 contract TryTrade is ReentrancyGuard, Ownable {
-    using Counters for Counters.Counter;
-
-    Counters.Counter private _leagueIds;
+    // Built-in counter instead of OpenZeppelin Counters
+    uint256 private _leagueIdCounter;
 
     // Constants
     uint256 public constant VIRTUAL_UNITS = 100;
@@ -140,7 +139,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
     // Modifiers
     modifier leagueExists(uint256 _leagueId) {
-        require(_leagueId > 0 && _leagueId <= _leagueIds.current(), "League does not exist");
+        require(_leagueId > 0 && _leagueId <= _leagueIdCounter, "League does not exist");
         _;
     }
 
@@ -156,7 +155,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
         _;
     }
 
-    constructor(address _priceFeed) {
+    constructor(address _priceFeed) Ownable(msg.sender) {
         require(_priceFeed != address(0), "Price feed address cannot be zero");
         priceFeed = IMockPriceFeed(_priceFeed);
 
@@ -205,8 +204,9 @@ contract TryTrade is ReentrancyGuard, Ownable {
         require(_maxParticipants > 0, "Max participants must be greater than 0");
         require(_maxParticipants >= 3, "Need at least 3 participants for prizes");
 
-        _leagueIds.increment();
-        uint256 newLeagueId = _leagueIds.current();
+        // Use built-in counter
+        ++_leagueIdCounter;
+        uint256 newLeagueId = _leagueIdCounter;
 
         League storage newLeague = leagues[newLeagueId];
         newLeague.leagueId = newLeagueId;
@@ -464,8 +464,6 @@ contract TryTrade is ReentrancyGuard, Ownable {
         return priceFeed.getPriceAtTimestamp(_asset, _timestamp);
     }
 
-    // ... (rest of the getter functions remain the same as in the previous version)
-
     /**
      * @dev Get league information
      */
@@ -644,7 +642,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Get total number of leagues
      */
     function getTotalLeagues() external view returns (uint256) {
-        return _leagueIds.current();
+        return _leagueIdCounter;
     }
 
     /**
