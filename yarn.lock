@@ -10819,6 +10819,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"openzeppelin@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "openzeppelin@npm:1.0.0"
+  bin:
+    openzeppelin-contracts-migrate-imports: scripts/migrate-imports.js
+  checksum: c35f67b29c9574487c6899f7792f09559d0f13d5bba427ca90f04d40318f1c0f5755f8f70f911f781c6781fb4c4ac7be7b3b0132cf9132dbf4a21e4981141cb4
+  languageName: node
+  linkType: hard
+
 "optionator@npm:^0.9.3":
   version: 0.9.4
   resolution: "optionator@npm:0.9.4"
@@ -12194,6 +12203,7 @@ __metadata:
   dependencies:
     husky: ~9.1.6
     lint-staged: ~13.2.2
+    openzeppelin: ^1.0.0
   languageName: unknown
   linkType: soft
 
