@@ -29,9 +29,6 @@ const Hero: React.FC = () => {
         <div className="flex justify-center space-x-4">
           {competitions.map((comp, index) => (
             <div key={index} className="bg-base-200 p-4 rounded-lg w-1/3">
-              <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full absolute -top-2 -left-2">
-                LIVE
-              </span>
               <h3 className="font-medium">{comp.title}</h3>
               <p className="text-sm text-gray-500">{comp.description}</p>
             </div>
