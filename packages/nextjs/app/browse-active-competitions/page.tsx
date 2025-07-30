@@ -12,6 +12,7 @@ import {
   MagnifyingGlassIcon,
   TrophyIcon,
   UserGroupIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 // Mock data for available competitions - in production this would come from the contract
@@ -87,6 +88,192 @@ const mockCompetitions = [
     owner: "0x5678...9012",
   },
 ];
+
+// Available tokens for allocation
+const availableTokens = [
+  { id: "ETH", name: "Ethereum", symbol: "ETH" },
+  { id: "BTC", name: "Bitcoin", symbol: "BTC" },
+  { id: "USDC", name: "USD Coin", symbol: "USDC" },
+  { id: "UNI", name: "Uniswap", symbol: "UNI" },
+  { id: "LINK", name: "Chainlink", symbol: "LINK" },
+  { id: "AAVE", name: "Aave", symbol: "AAVE" },
+];
+
+interface TokenAllocation {
+  tokenId: string;
+  allocation: number;
+}
+
+interface JoinCompetitionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  competitionId: number | null;
+  competitionName: string;
+  stakeAmount: string;
+  onJoin: (competitionId: number, allocations: TokenAllocation[]) => void;
+}
+
+const JoinCompetitionModal = ({
+  isOpen,
+  onClose,
+  competitionId,
+  competitionName,
+  stakeAmount,
+  onJoin,
+}: JoinCompetitionModalProps) => {
+  const [allocations, setAllocations] = useState<TokenAllocation[]>([]);
+  const [totalAllocated, setTotalAllocated] = useState(0);
+
+  const handleAllocationChange = (tokenId: string, value: number) => {
+    const newAllocations = [...allocations];
+    const existingIndex = newAllocations.findIndex(a => a.tokenId === tokenId);
+
+    if (existingIndex >= 0) {
+      if (value === 0) {
+        newAllocations.splice(existingIndex, 1);
+      } else {
+        newAllocations[existingIndex].allocation = value;
+      }
+    } else if (value > 0) {
+      newAllocations.push({ tokenId, allocation: value });
+    }
+
+    setAllocations(newAllocations);
+    setTotalAllocated(newAllocations.reduce((sum, a) => sum + a.allocation, 0));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (totalAllocated !== 100) {
+      alert("Total allocation must equal 100 points");
+      return;
+    }
+    if (allocations.length === 0) {
+      alert("You must allocate points to at least one token");
+      return;
+    }
+    if (competitionId) {
+      onJoin(competitionId, allocations);
+      handleClose();
+    }
+  };
+
+  const handleClose = () => {
+    setAllocations([]);
+    setTotalAllocated(0);
+    onClose();
+  };
+
+  const getAllocation = (tokenId: string) => {
+    return allocations.find(a => a.tokenId === tokenId)?.allocation || 0;
+  };
+
+  const remainingPoints = 100 - totalAllocated;
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal modal-open">
+      <div className="modal-box relative max-w-2xl">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="text-xl font-bold">Join Competition</h3>
+            <p className="text-sm text-base-content/60 mt-1">{competitionName}</p>
+          </div>
+          <button onClick={handleClose} className="btn btn-ghost btn-sm btn-circle">
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Competition Info */}
+        <div className="bg-base-200 p-4 rounded-lg mb-6">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-base-content/70">Entry Fee:</span>
+            <span className="font-semibold">{stakeAmount} ETH</span>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="mb-6">
+          <h4 className="font-semibold mb-2">Deploy Your 100 Points</h4>
+          <p className="text-sm text-base-content/70 mb-4">
+            Allocate your 100 available points across different tokens. Your portfolio performance will be tracked based
+            on these allocations.
+          </p>
+
+          {/* Points Summary */}
+          <div className="flex justify-between items-center mb-4 p-3 bg-base-200 rounded-lg">
+            <span className="text-sm">Points Allocated:</span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-semibold ${totalAllocated === 100 ? "text-success" : totalAllocated > 100 ? "text-error" : "text-warning"}`}
+              >
+                {totalAllocated}/100
+              </span>
+              <span className="text-xs text-base-content/60">({remainingPoints} remaining)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Token Allocation Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 max-h-64 overflow-y-auto">
+            {availableTokens.map(token => (
+              <div key={token.id} className="flex items-center justify-between p-3 border border-base-300 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-content text-xs font-bold">
+                    {token.symbol.slice(0, 2)}
+                  </div>
+                  <div>
+                    <div className="font-medium">{token.name}</div>
+                    <div className="text-xs text-base-content/60">{token.symbol}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max={remainingPoints + getAllocation(token.id)}
+                    value={getAllocation(token.id)}
+                    onChange={e => handleAllocationChange(token.id, parseInt(e.target.value) || 0)}
+                    className="input input-bordered input-sm w-20 text-center"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-base-content/60">pts</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-base-300 rounded-full h-2 mb-4">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                totalAllocated === 100 ? "bg-success" : totalAllocated > 100 ? "bg-error" : "bg-warning"
+              }`}
+              style={{ width: `${Math.min(totalAllocated, 100)}%` }}
+            ></div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={totalAllocated !== 100 || allocations.length === 0}
+            >
+              Join Competition
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const CompetitionCard = ({
   competition,
@@ -225,6 +412,12 @@ const BrowseCompetitions: NextPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [selectedCompetition, setSelectedCompetition] = useState<{
+    id: number;
+    name: string;
+    stakeAmount: string;
+  } | null>(null);
 
   // Filter competitions
   const filteredCompetitions = competitions.filter(comp => {
@@ -243,8 +436,22 @@ const BrowseCompetitions: NextPage = () => {
       return;
     }
 
+    // Find the competition to get its details
+    const competition = competitions.find(c => c.id === competitionId);
+    if (!competition) return;
+
+    // Open the modal instead of showing alert
+    setSelectedCompetition({
+      id: competitionId,
+      name: competition.name,
+      stakeAmount: competition.stakeAmount,
+    });
+    setIsJoinModalOpen(true);
+  };
+
+  const handleJoinWithAllocations = async (competitionId: number, allocations: TokenAllocation[]) => {
     // In production, this would interact with the smart contract
-    console.log(`Joining competition ${competitionId}`);
+    console.log(`Joining competition ${competitionId} with allocations:`, allocations);
 
     // Mock joining - update the participant count
     setCompetitions(prev =>
@@ -253,7 +460,8 @@ const BrowseCompetitions: NextPage = () => {
       ),
     );
 
-    alert(`Successfully joined competition! (This is a demo)`);
+    // Show success message
+    alert(`Successfully joined competition with your token allocation! (This is a demo)`);
   };
 
   const categories = [
@@ -417,6 +625,16 @@ const BrowseCompetitions: NextPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Join Competition Modal */}
+      <JoinCompetitionModal
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+        competitionId={selectedCompetition?.id || null}
+        competitionName={selectedCompetition?.name || ""}
+        stakeAmount={selectedCompetition?.stakeAmount || ""}
+        onJoin={handleJoinWithAllocations}
+      />
     </div>
   );
 };
