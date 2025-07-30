@@ -2,21 +2,22 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "foundry-chainlink-toolkit/script/feeds/DataFeed.s.sol";
 
 /**
- * @title MockPriceFeed
- * @dev Mock price feed for testing and development
+ * @title PriceFeed
+ * @dev Price feed for testing and development
  * @notice Provides historical and current price data for supported assets
  */
-contract MockPriceFeed is Ownable {
-
+contract Price is Ownable {
     struct PriceFeed {
-        uint256[] prices;           // Array of historical prices
-        uint256 startTimestamp;     // When the price feed starts
-        uint256 intervalSeconds;    // Time interval between price points
-        uint8 feedDecimals;         // Changed from 'decimals' to 'feedDecimals'
-        string feedDescription;     // Changed from 'description' to 'feedDescription'
-        bool isActive;              // Whether the feed is active
+        address feedAddress; // Chainlink Feed Address
+        uint256[] prices; // Array of historical prices
+        uint256 startTimestamp; // When the price feed starts
+        uint256 intervalSeconds; // Time interval between price points
+        uint8 feedDecimals; // Changed from 'decimals' to 'feedDecimals'
+        string feedDescription; // Changed from 'description' to 'feedDescription'
+        bool isActive; // Whether the feed is active
     }
 
     // Mapping from asset symbol to price feed data
@@ -29,24 +30,11 @@ contract MockPriceFeed is Ownable {
     mapping(string => bool) public assetExists;
 
     // Events
-    event PriceFeedCreated(
-        string indexed asset,
-        uint256[] prices,
-        uint256 startTimestamp,
-        uint256 intervalSeconds
-    );
+    event PriceFeedCreated(string indexed asset, uint256[] prices, uint256 startTimestamp, uint256 intervalSeconds);
 
-    event PriceFeedUpdated(
-        string indexed asset,
-        uint256[] newPrices
-    );
+    event PriceFeedUpdated(string indexed asset, uint256[] newPrices);
 
-    event PriceRequested(
-        string indexed asset,
-        uint256 timestamp,
-        uint256 price,
-        uint256 roundId
-    );
+    event PriceRequested(string indexed asset, uint256 timestamp, uint256 price, uint256 roundId);
 
     // Modifiers
     modifier assetSupported(string memory _asset) {
@@ -55,7 +43,15 @@ contract MockPriceFeed is Ownable {
         _;
     }
 
-    constructor() Ownable(msg.sender) {}
+    constructor() Ownable(msg.sender) {
+        // Initialize with Sepolia addresses (USD)
+        priceFeeds["ETH"].feedAddress = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
+        priceFeeds["BTC"].feedAddress = 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43;
+
+        // Set decimals
+        priceFeeds["ETH"].feedDecimals = 8;
+        priceFeeds["BTC"].feedDecimals = 8;
+    }
 
     /**
      * @dev Create a new price feed for an asset
@@ -68,6 +64,7 @@ contract MockPriceFeed is Ownable {
      */
     function createPriceFeed(
         string memory _asset,
+        address _feedAddress,
         uint256[] memory _prices,
         uint256 _startTimestamp,
         uint256 _intervalSeconds,
@@ -79,6 +76,7 @@ contract MockPriceFeed is Ownable {
         require(!assetExists[_asset], "Asset already exists");
 
         priceFeeds[_asset] = PriceFeed({
+            feedAddress: _feedAddress,
             prices: _prices,
             startTimestamp: _startTimestamp,
             intervalSeconds: _intervalSeconds,
@@ -98,10 +96,11 @@ contract MockPriceFeed is Ownable {
      * @param _asset Asset symbol
      * @param _newPrices New array of prices
      */
-    function updatePriceFeed(
-        string memory _asset,
-        uint256[] memory _newPrices
-    ) external onlyOwner assetSupported(_asset) {
+    function updatePriceFeed(string memory _asset, uint256[] memory _newPrices)
+        external
+        onlyOwner
+        assetSupported(_asset)
+    {
         require(_newPrices.length > 0, "Prices array cannot be empty");
 
         priceFeeds[_asset].prices = _newPrices;
@@ -116,10 +115,12 @@ contract MockPriceFeed is Ownable {
      * @return price Price at the given timestamp
      * @return timestamp Actual timestamp of the price data point
      */
-    function getPriceAtTimestamp(
-        string memory _asset,
-        uint256 _timestamp
-    ) external view assetSupported(_asset) returns (uint256 price, uint256 timestamp) {
+    function getPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+        external
+        view
+        assetSupported(_asset)
+        returns (uint256 price, uint256 timestamp)
+    {
         PriceFeed storage feed = priceFeeds[_asset];
 
         if (_timestamp <= feed.startTimestamp) {
@@ -149,42 +150,31 @@ contract MockPriceFeed is Ownable {
      * @return timestamp Timestamp of the latest price
      * @return roundId Round ID for Chainlink compatibility
      */
-    function getLatestPrice(
-        string memory _asset
-    ) external view assetSupported(_asset) returns (uint256 price, uint256 timestamp, uint256 roundId) {
-        return _getPriceAtTimestamp(_asset, block.timestamp);
-    }
+    function getLatestPrice(string memory _asset)
+        external
+        assetSupported(_asset)
+        returns (uint256 price, uint256 timestamp, uint256 roundId)
+    {
+        address feedAddress = priceFeeds[_asset].feedAddress;
+        require(feedAddress != address(0), "Price feed not available for this asset");
 
-    /**
-     * @dev Get price at a specific round
-     * @param _asset Asset symbol
-     * @param _roundId Round ID (1-indexed)
-     * @return price Price at the given round
-     * @return timestamp Timestamp of the price
-     */
-    function getPriceAtRound(
-        string memory _asset,
-        uint256 _roundId
-    ) external view assetSupported(_asset) returns (uint256 price, uint256 timestamp) {
-        require(_roundId > 0, "Round ID must be greater than 0");
+        DataFeedsScript dataFeed = new DataFeedsScript(feedAddress);
 
-        PriceFeed storage feed = priceFeeds[_asset];
-        require(_roundId <= feed.prices.length, "Round ID exceeds available data");
+        (uint80 _roundId, int256 _price,, uint256 _timestamp,) = dataFeed.getLatestRoundData();
 
-        uint256 index = _roundId - 1; // Convert to 0-indexed
-        timestamp = feed.startTimestamp + (index * feed.intervalSeconds);
-        price = feed.prices[index];
+        require(_price > 0, "Invalid price data");
 
-        return (price, timestamp);
+        return (uint256(_price), _timestamp, uint256(_roundId));
     }
 
     /**
      * @dev Internal function to get price at timestamp with round ID
      */
-    function _getPriceAtTimestamp(
-        string memory _asset,
-        uint256 _timestamp
-    ) internal view returns (uint256 price, uint256 timestamp, uint256 roundId) {
+    function _getPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+        internal
+        view
+        returns (uint256 price, uint256 timestamp, uint256 roundId)
+    {
         PriceFeed storage feed = priceFeeds[_asset];
 
         if (_timestamp <= feed.startTimestamp) {
@@ -212,10 +202,11 @@ contract MockPriceFeed is Ownable {
      * @return price Price at the given timestamp
      * @return timestamp Actual timestamp of the price data point
      */
-    function requestPriceAtTimestamp(
-        string memory _asset,
-        uint256 _timestamp
-    ) external assetSupported(_asset) returns (uint256 price, uint256 timestamp) {
+    function requestPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+        external
+        assetSupported(_asset)
+        returns (uint256 price, uint256 timestamp)
+    {
         PriceFeed storage feed = priceFeeds[_asset];
 
         if (_timestamp <= feed.startTimestamp) {
@@ -246,16 +237,19 @@ contract MockPriceFeed is Ownable {
      * @return intervalSeconds Interval between prices
      * @return isActive Whether feed is active
      */
-    function getFeedInfo(
-        string memory _asset
-    ) external view assetSupported(_asset) returns (
-        uint8 feedDecimals,
-        string memory feedDescription,
-        uint256 totalRounds,
-        uint256 startTimestamp,
-        uint256 intervalSeconds,
-        bool isActive
-    ) {
+    function getFeedInfo(string memory _asset)
+        external
+        view
+        assetSupported(_asset)
+        returns (
+            uint8 feedDecimals,
+            string memory feedDescription,
+            uint256 totalRounds,
+            uint256 startTimestamp,
+            uint256 intervalSeconds,
+            bool isActive
+        )
+    {
         PriceFeed storage feed = priceFeeds[_asset];
         return (
             feed.feedDecimals,
@@ -322,23 +316,14 @@ contract MockPriceFeed is Ownable {
      * @return updatedAt Updated timestamp
      * @return answeredInRound Answered in round
      */
-    function latestRoundData(
-        string memory _asset
-    ) external view assetSupported(_asset) returns (
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    ) {
+    function latestRoundData(string memory _asset)
+        external
+        view
+        assetSupported(_asset)
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+    {
         (uint256 price, uint256 timestamp, uint256 round) = _getPriceAtTimestamp(_asset, block.timestamp);
 
-        return (
-            uint80(round),
-            int256(price),
-            timestamp,
-            timestamp,
-            uint80(round)
-        );
+        return (uint80(round), int256(price), timestamp, timestamp, uint80(round));
     }
 }

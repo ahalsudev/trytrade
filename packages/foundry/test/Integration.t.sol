@@ -3,11 +3,11 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "../contracts/TryTrade.sol";
-import "../contracts/MockPriceFeed.sol";
+import "../contracts/Price.sol";
 
 contract IntegrationTest is Test {
     TryTrade public tryTrade;
-    MockPriceFeed public priceFeed;
+    Price public priceFeed;
 
     address[] public users;
     uint256 public constant NUM_USERS = 10;
@@ -16,11 +16,11 @@ contract IntegrationTest is Test {
 
     function setUp() public {
         // Deploy contracts
-        priceFeed = new MockPriceFeed();
+        priceFeed = new Price();
         tryTrade = new TryTrade(address(priceFeed));
 
         // Create users
-        for (uint i = 0; i < NUM_USERS; i++) {
+        for (uint256 i = 0; i < NUM_USERS; i++) {
             address user = address(uint160(i + 1));
             users.push(user);
             vm.deal(user, 100 ether);
@@ -38,23 +38,27 @@ contract IntegrationTest is Test {
 
         // ETH: Bull market scenario (+25% over week)
         uint256[] memory ethPrices = new uint256[](pricePoints);
-        for (uint i = 0; i < pricePoints; i++) {
+        for (uint256 i = 0; i < pricePoints; i++) {
             uint256 basePrice = 200000000000; // $2000
             uint256 growth = (basePrice * 25 * i) / (100 * pricePoints); // 25% growth
             uint256 volatility = (i % 12 == 0) ? 1000000000 : 0; // Some volatility every 12 hours
             ethPrices[i] = basePrice + growth + volatility;
         }
 
-        // WBTC: Bear market scenario (-15% over week)
-        uint256[] memory wbtcPrices = new uint256[](pricePoints);
-        for (uint i = 0; i < pricePoints; i++) {
+        // BTC: Bear market scenario (-15% over week)
+        uint256[] memory btcPrices = new uint256[](pricePoints);
+        for (uint256 i = 0; i < pricePoints; i++) {
             uint256 basePrice = 3000000000000; // $30000
             uint256 decline = (basePrice * 15 * i) / (100 * pricePoints); // 15% decline
-            wbtcPrices[i] = basePrice - decline;
+            btcPrices[i] = basePrice - decline;
         }
 
-        priceFeed.createPriceFeed("ETH", ethPrices, startTime, interval, 8, "ETH/USD");
-        priceFeed.createPriceFeed("WBTC", wbtcPrices, startTime, interval, 8, "WBTC/USD");
+        priceFeed.createPriceFeed(
+            "ETH", 0x694AA1769357215DE4FAC081bf1f309aDC325306, ethPrices, startTime, interval, 8, "ETH/USD"
+        );
+        priceFeed.createPriceFeed(
+            "BTC", 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43, btcPrices, startTime, interval, 8, "BTC/USD"
+        );
     }
 
     function testFullLeagueLifecycle() public {
@@ -63,18 +67,13 @@ contract IntegrationTest is Test {
 
         // 1. Create league
         uint256 leagueId = tryTrade.createLeague(
-            "Integration Test League",
-            "Full lifecycle test",
-            startTime,
-            endTime,
-            ENTRY_FEE,
-            NUM_USERS
+            "Integration Test League", "Full lifecycle test", startTime, endTime, ENTRY_FEE, NUM_USERS
         );
 
         // 2. All users join
-        for (uint i = 0; i < NUM_USERS; i++) {
+        for (uint256 i = 0; i < NUM_USERS; i++) {
             vm.prank(users[i]);
-            tryTrade.joinLeague{value: ENTRY_FEE}(leagueId);
+            tryTrade.joinLeague{ value: ENTRY_FEE }(leagueId);
         }
 
         // Verify all joined
@@ -91,27 +90,27 @@ contract IntegrationTest is Test {
         uint256[] memory ethOnlyAlloc = new uint256[](1);
         ethOnlyAlloc[0] = 100;
 
-        string[] memory wbtcOnly = new string[](1);
-        wbtcOnly[0] = "WBTC";
-        uint256[] memory wbtcOnlyAlloc = new uint256[](1);
-        wbtcOnlyAlloc[0] = 100;
+        string[] memory btcOnly = new string[](1);
+        btcOnly[0] = "BTC";
+        uint256[] memory btcOnlyAlloc = new uint256[](1);
+        btcOnlyAlloc[0] = 100;
 
         string[] memory balanced = new string[](2);
         balanced[0] = "ETH";
-        balanced[1] = "WBTC";
+        balanced[1] = "BTC";
         uint256[] memory balancedAlloc = new uint256[](2);
         balancedAlloc[0] = 50;
         balancedAlloc[1] = 50;
 
         // Submit different strategies
-        for (uint i = 0; i < NUM_USERS; i++) {
+        for (uint256 i = 0; i < NUM_USERS; i++) {
             vm.prank(users[i]);
             if (i < 3) {
                 // First 3 users: ETH only (should win)
                 tryTrade.submitPortfolio(leagueId, ethOnly, ethOnlyAlloc);
             } else if (i < 6) {
-                // Next 3 users: WBTC only (should lose)
-                tryTrade.submitPortfolio(leagueId, wbtcOnly, wbtcOnlyAlloc);
+                // Next 3 users: BTC only (should lose)
+                tryTrade.submitPortfolio(leagueId, btcOnly, btcOnlyAlloc);
             } else {
                 // Remaining users: Balanced (middle performance)
                 tryTrade.submitPortfolio(leagueId, balanced, balancedAlloc);
@@ -123,7 +122,7 @@ contract IntegrationTest is Test {
 
         // 5. Finalize league
         uint256[] memory balancesBefore = new uint256[](NUM_USERS);
-        for (uint i = 0; i < NUM_USERS; i++) {
+        for (uint256 i = 0; i < NUM_USERS; i++) {
             balancesBefore[i] = users[i].balance;
         }
 
@@ -147,12 +146,11 @@ contract IntegrationTest is Test {
         assertTrue(winner3Valid, "Third place should be ETH-only user");
 
         // Verify prize distribution
-        uint256 totalPrizes = (ENTRY_FEE * NUM_USERS * 50) / 100 +
-            (ENTRY_FEE * NUM_USERS * 30) / 100 +
-            (ENTRY_FEE * NUM_USERS * 20) / 100;
+        uint256 totalPrizes =
+            (ENTRY_FEE * NUM_USERS * 50) / 100 + (ENTRY_FEE * NUM_USERS * 30) / 100 + (ENTRY_FEE * NUM_USERS * 20) / 100;
 
         uint256 totalDistributed = 0;
-        for (uint i = 0; i < 3; i++) {
+        for (uint256 i = 0; i < 3; i++) {
             uint256 prizeReceived = winners[i].balance - balancesBefore[_findUserIndex(winners[i])];
             totalDistributed += prizeReceived;
         }
@@ -165,7 +163,7 @@ contract IntegrationTest is Test {
         uint256[] memory leagueIds = new uint256[](numLeagues);
 
         // Create multiple leagues with different parameters
-        for (uint i = 0; i < numLeagues; i++) {
+        for (uint256 i = 0; i < numLeagues; i++) {
             leagueIds[i] = tryTrade.createLeague(
                 string.concat("League ", vm.toString(i)),
                 "Multi-league test",
@@ -177,17 +175,18 @@ contract IntegrationTest is Test {
         }
 
         // Users join different combinations of leagues
-        for (uint u = 0; u < 5; u++) {
-            for (uint l = 0; l < numLeagues; l++) {
-                if ((u + l) % 2 == 0) { // Some users join some leagues
+        for (uint256 u = 0; u < 5; u++) {
+            for (uint256 l = 0; l < numLeagues; l++) {
+                if ((u + l) % 2 == 0) {
+                    // Some users join some leagues
                     vm.prank(users[u]);
-                    tryTrade.joinLeague{value: ENTRY_FEE * (l + 1)}(leagueIds[l]);
+                    tryTrade.joinLeague{ value: ENTRY_FEE * (l + 1) }(leagueIds[l]);
                 }
             }
         }
 
         // Verify league states
-        for (uint i = 0; i < numLeagues; i++) {
+        for (uint256 i = 0; i < numLeagues; i++) {
             TryTrade.LeagueInfo memory info = tryTrade.getLeagueInfo(leagueIds[i]);
             assertGt(info.currentParticipants, 0);
             assertGt(info.prizePool, 0);
@@ -206,9 +205,9 @@ contract IntegrationTest is Test {
         );
 
         // Add users
-        for (uint i = 0; i < 3; i++) {
+        for (uint256 i = 0; i < 3; i++) {
             vm.prank(users[i]);
-            tryTrade.joinLeague{value: ENTRY_FEE}(leagueId);
+            tryTrade.joinLeague{ value: ENTRY_FEE }(leagueId);
         }
 
         // Start league and submit portfolios
@@ -216,13 +215,13 @@ contract IntegrationTest is Test {
 
         string[] memory tokens = new string[](2);
         tokens[0] = "ETH";
-        tokens[1] = "WBTC";
+        tokens[1] = "BTC";
 
         uint256[] memory allocations = new uint256[](2);
         allocations[0] = 70;
         allocations[1] = 30;
 
-        for (uint i = 0; i < 3; i++) {
+        for (uint256 i = 0; i < 3; i++) {
             vm.prank(users[i]);
             tryTrade.submitPortfolio(leagueId, tokens, allocations);
         }
@@ -237,7 +236,7 @@ contract IntegrationTest is Test {
     }
 
     function _findUserIndex(address user) internal view returns (uint256) {
-        for (uint i = 0; i < users.length; i++) {
+        for (uint256 i = 0; i < users.length; i++) {
             if (users[i] == user) return i;
         }
         revert("User not found");
