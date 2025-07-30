@@ -1,0 +1,701 @@
+{
+  "info": {
+    "name": "TryTrade Chainlink Round ID Estimation API",
+    "description": "API collection for estimating Chainlink round IDs based on timestamps for historical price lookups on Sepolia testnet",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Round Estimation",
+      "item": [
+        {
+          "name": "Estimate Round ID - GET (ETH)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Set dynamic timestamp (24 hours ago)",
+                  "const timestampOneDayAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);",
+                  "pm.environment.set('timestamp_24h_ago', timestampOneDayAgo);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has success field', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('success');",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Response contains estimation data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.have.property('asset');",
+                  "    pm.expect(jsonData.data).to.have.property('estimatedRoundId');",
+                  "    pm.expect(jsonData.data).to.have.property('confidence');",
+                  "    pm.expect(jsonData.data).to.have.property('feedAddress');",
+                  "});",
+                  "",
+                  "pm.test('Asset is ETH', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.asset).to.eql('ETH');",
+                  "});",
+                  "",
+                  "pm.test('Round ID is positive number', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.estimatedRoundId).to.be.a('number');",
+                  "    pm.expect(jsonData.data.estimatedRoundId).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Confidence level is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const validConfidences = ['high', 'medium', 'low'];",
+                  "    pm.expect(validConfidences).to.include(jsonData.data.confidence);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=ETH&timestamp={{timestamp_24h_ago}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "ETH",
+                  "description": "Asset symbol (ETH, BTC, WBTC)"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "{{timestamp_24h_ago}}",
+                  "description": "Unix timestamp in seconds"
+                }
+              ]
+            },
+            "description": "Estimate round ID for ETH price feed using GET request with query parameters"
+          }
+        },
+        {
+          "name": "Estimate Round ID - GET (BTC)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Set dynamic timestamp (1 week ago)",
+                  "const timestampOneWeekAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);",
+                  "pm.environment.set('timestamp_1week_ago', timestampOneWeekAgo);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Asset is BTC', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.asset).to.eql('BTC');",
+                  "});",
+                  "",
+                  "pm.test('Feed address is BTC feed', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.feedAddress).to.eql('0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=BTC&timestamp={{timestamp_1week_ago}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "BTC"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "{{timestamp_1week_ago}}"
+                }
+              ]
+            },
+            "description": "Estimate round ID for BTC price feed for timestamp 1 week ago"
+          }
+        },
+        {
+          "name": "Estimate Round ID - POST (ETH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response structure is correct', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('success', true);",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.have.property('asset', 'ETH');",
+                  "    pm.expect(jsonData.data).to.have.property('targetTimestamp');",
+                  "    pm.expect(jsonData.data).to.have.property('estimatedRoundId');",
+                  "    pm.expect(jsonData.data).to.have.property('confidence');",
+                  "    pm.expect(jsonData.data).to.have.property('estimatedAt');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset\": \"ETH\",\n  \"timestamp\": 1704067200\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"]
+            },
+            "description": "Estimate round ID for ETH using POST request with JSON body. Timestamp: 2024-01-01 00:00:00 UTC"
+          }
+        },
+        {
+          "name": "Estimate Round ID - POST (WBTC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Asset is WBTC', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.asset).to.eql('WBTC');",
+                  "});",
+                  "",
+                  "pm.test('Uses BTC feed address', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.feedAddress).to.eql('0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset\": \"WBTC\",\n  \"timestamp\": 1703980800\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"]
+            },
+            "description": "Estimate round ID for WBTC (uses BTC feed). Timestamp: 2023-12-31 00:00:00 UTC"
+          }
+        }
+      ],
+      "description": "API endpoints for estimating Chainlink round IDs based on timestamps"
+    },
+    {
+      "name": "Error Handling",
+      "item": [
+        {
+          "name": "Missing Asset Parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about missing parameters', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('Missing required parameters');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?timestamp=1704067200",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "timestamp",
+                  "value": "1704067200"
+                }
+              ]
+            },
+            "description": "Test error handling when asset parameter is missing"
+          }
+        },
+        {
+          "name": "Missing Timestamp Parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about missing parameters', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('Missing required parameters');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=ETH",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "ETH"
+                }
+              ]
+            },
+            "description": "Test error handling when timestamp parameter is missing"
+          }
+        },
+        {
+          "name": "Unsupported Asset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about unsupported asset', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('Unsupported asset');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=DOGE&timestamp=1704067200",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "DOGE"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "1704067200"
+                }
+              ]
+            },
+            "description": "Test error handling for unsupported asset (DOGE)"
+          }
+        },
+        {
+          "name": "Invalid Timestamp Format",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about invalid timestamp', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('Invalid timestamp');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=ETH&timestamp=invalid",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "ETH"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "invalid"
+                }
+              ]
+            },
+            "description": "Test error handling for invalid timestamp format"
+          }
+        },
+        {
+          "name": "Negative Timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message about invalid timestamp', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.include('Invalid timestamp');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset\": \"ETH\",\n  \"timestamp\": -1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"]
+            },
+            "description": "Test error handling for negative timestamp"
+          }
+        }
+      ],
+      "description": "Test cases for various error scenarios"
+    },
+    {
+      "name": "Edge Cases",
+      "item": [
+        {
+          "name": "Future Timestamp",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Set timestamp 1 hour in the future",
+                  "const futureTimestamp = Math.floor(Date.now() / 1000) + (60 * 60);",
+                  "pm.environment.set('future_timestamp', futureTimestamp);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Should return latest round for future timestamp', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.confidence).to.eql('high');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=ETH&timestamp={{future_timestamp}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "ETH"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "{{future_timestamp}}"
+                }
+              ]
+            },
+            "description": "Test behavior with future timestamp (should return latest round)"
+          }
+        },
+        {
+          "name": "Very Old Timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Should handle old timestamp gracefully', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data.estimatedRoundId).to.be.a('number');",
+                  "    pm.expect(jsonData.data.estimatedRoundId).to.be.at.least(1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=BTC&timestamp=1640995200",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "BTC"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "1640995200",
+                  "description": "2022-01-01 00:00:00 UTC"
+                }
+              ]
+            },
+            "description": "Test with very old timestamp (2022-01-01)"
+          }
+        },
+        {
+          "name": "Case Insensitive Asset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Asset is normalized to uppercase', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.asset).to.eql('ETH');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=eth&timestamp=1704067200",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "eth",
+                  "description": "Lowercase asset symbol"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "1704067200"
+                }
+              ]
+            },
+            "description": "Test case insensitive asset parameter handling"
+          }
+        }
+      ],
+      "description": "Edge cases and boundary conditions"
+    },
+    {
+      "name": "Performance Tests",
+      "item": [
+        {
+          "name": "Multiple Concurrent Requests",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response time is acceptable', function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000); // 10 seconds",
+                  "});",
+                  "",
+                  "pm.test('Response structure is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.be.true;",
+                  "    pm.expect(jsonData.data).to.have.property('estimatedRoundId');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chainlink/estimate-round?asset=ETH&timestamp=1704067200",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chainlink", "estimate-round"],
+              "query": [
+                {
+                  "key": "asset",
+                  "value": "ETH"
+                },
+                {
+                  "key": "timestamp",
+                  "value": "1704067200"
+                }
+              ]
+            },
+            "description": "Test for performance under load. Run this multiple times concurrently."
+          }
+        }
+      ],
+      "description": "Performance and load testing"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "description": "Base URL for the Next.js application"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": ["// Global pre-request script", "console.log('Making request to:', pm.request.url.toString());"],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// Global test script",
+          "pm.test('Response format is JSON', function () {",
+          "    pm.response.to.be.json;",
+          "});",
+          "",
+          "pm.test('Response time is reasonable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(30000); // 30 seconds max",
+          "});"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ]
+}

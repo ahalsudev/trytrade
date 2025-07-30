@@ -1,0 +1,1 @@
+cast call 0x694AA1769357215DE4FAC081bf1f309aDC325306 "latestRoundData()(uint80,int256,uint256,uint256,uint80)" --rpc-url https://eth-sepolia.g.alchemy.com/public
