@@ -4,9 +4,15 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-interface IMockPriceFeed {
-    function getPriceAtTimestamp(string memory _asset, uint256 _timestamp) external view returns (uint256 price, uint256 timestamp);
-    function getLatestPrice(string memory _asset) external view returns (uint256 price, uint256 timestamp, uint256 roundId);
+interface IPriceFeed {
+    function getPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+        external
+        view
+        returns (uint256 price, uint256 timestamp);
+    function getLatestPrice(string memory _asset)
+        external
+        view
+        returns (uint256 price, uint256 timestamp, uint256 roundId);
     function decimals(string memory _asset) external view returns (uint8);
 }
 
@@ -84,7 +90,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     mapping(string => bool) public isTokenSupported;
 
     // Price feed contract
-    IMockPriceFeed public priceFeed;
+    IPriceFeed public priceFeed;
 
     // Events
     event LeagueCreated(
@@ -97,45 +103,19 @@ contract TryTrade is ReentrancyGuard, Ownable {
         uint256 maxParticipants
     );
 
-    event PlayerJoined(
-        uint256 indexed leagueId,
-        address indexed player,
-        uint256 entryFee
-    );
+    event PlayerJoined(uint256 indexed leagueId, address indexed player, uint256 entryFee);
 
-    event PortfolioSubmitted(
-        uint256 indexed leagueId,
-        address indexed player,
-        string[] tokens,
-        uint256[] allocations
-    );
+    event PortfolioSubmitted(uint256 indexed leagueId, address indexed player, string[] tokens, uint256[] allocations);
 
-    event LeagueFinalized(
-        uint256 indexed leagueId,
-        address[] winners,
-        uint256[] prizes
-    );
+    event LeagueFinalized(uint256 indexed leagueId, address[] winners, uint256[] prizes);
 
-    event PrizeDistributed(
-        uint256 indexed leagueId,
-        address indexed winner,
-        uint256 position,
-        uint256 amount
-    );
+    event PrizeDistributed(uint256 indexed leagueId, address indexed winner, uint256 position, uint256 amount);
 
-    event TokenAdded(
-        string indexed symbol,
-        address indexed contractAddress
-    );
+    event TokenAdded(string indexed symbol, address indexed contractAddress);
 
-    event TokenRemoved(
-        string indexed symbol
-    );
+    event TokenRemoved(string indexed symbol);
 
-    event PriceFeedUpdated(
-        address indexed oldPriceFeed,
-        address indexed newPriceFeed
-    );
+    event PriceFeedUpdated(address indexed oldPriceFeed, address indexed newPriceFeed);
 
     // Modifiers
     modifier leagueExists(uint256 _leagueId) {
@@ -157,22 +137,18 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
     constructor(address _priceFeed) Ownable(msg.sender) {
         require(_priceFeed != address(0), "Price feed address cannot be zero");
-        priceFeed = IMockPriceFeed(_priceFeed);
+        priceFeed = IPriceFeed(_priceFeed);
 
         // Initialize with common cryptocurrency tokens
         _addToken("ETH", address(0)); // ETH uses zero address
-        _addToken("WBTC", 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599); // Example WBTC address on mainnet
+        _addToken("BTC", 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599); // Example BTC address on mainnet
     }
 
     /**
      * @dev Internal function to add a token
      */
     function _addToken(string memory _symbol, address _contractAddress) internal {
-        supportedTokens[_symbol] = Token({
-            symbol: _symbol,
-            contractAddress: _contractAddress,
-            isActive: true
-        });
+        supportedTokens[_symbol] = Token({ symbol: _symbol, contractAddress: _contractAddress, isActive: true });
         tokenSymbols.push(_symbol);
         isTokenSupported[_symbol] = true;
     }
@@ -183,7 +159,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     function setPriceFeed(address _priceFeed) external onlyOwner {
         require(_priceFeed != address(0), "Price feed address cannot be zero");
         address oldPriceFeed = address(priceFeed);
-        priceFeed = IMockPriceFeed(_priceFeed);
+        priceFeed = IPriceFeed(_priceFeed);
         emit PriceFeedUpdated(oldPriceFeed, _priceFeed);
     }
 
@@ -221,15 +197,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
         userLeagues[msg.sender].push(newLeagueId);
 
-        emit LeagueCreated(
-            newLeagueId,
-            msg.sender,
-            _name,
-            _startTime,
-            _endTime,
-            _entryFee,
-            _maxParticipants
-        );
+        emit LeagueCreated(newLeagueId, msg.sender, _name, _startTime, _endTime, _entryFee, _maxParticipants);
 
         return newLeagueId;
     }
@@ -237,12 +205,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Join an existing league
      */
-    function joinLeague(uint256 _leagueId)
-    external
-    payable
-    leagueExists(_leagueId)
-    nonReentrant
-    {
+    function joinLeague(uint256 _leagueId) external payable leagueExists(_leagueId) nonReentrant {
         League storage league = leagues[_leagueId];
 
         require(league.isActive, "League is not active");
@@ -264,15 +227,11 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Submit portfolio allocation for a league
      */
-    function submitPortfolio(
-        uint256 _leagueId,
-        string[] memory _tokens,
-        uint256[] memory _allocations
-    )
-    external
-    leagueExists(_leagueId)
-    leagueActive(_leagueId)
-    onlyParticipant(_leagueId)
+    function submitPortfolio(uint256 _leagueId, string[] memory _tokens, uint256[] memory _allocations)
+        external
+        leagueExists(_leagueId)
+        leagueActive(_leagueId)
+        onlyParticipant(_leagueId)
     {
         require(_tokens.length == _allocations.length, "Arrays length mismatch");
         require(_tokens.length > 0, "Must allocate to at least one token");
@@ -285,13 +244,13 @@ contract TryTrade is ReentrancyGuard, Ownable {
         uint256 totalAllocation = 0;
 
         // Clear existing allocations
-        for (uint i = 0; i < portfolio.tokens.length; i++) {
+        for (uint256 i = 0; i < portfolio.tokens.length; i++) {
             delete portfolio.allocations[portfolio.tokens[i]];
         }
         delete portfolio.tokens;
 
         // Set new allocations
-        for (uint i = 0; i < _tokens.length; i++) {
+        for (uint256 i = 0; i < _tokens.length; i++) {
             require(isTokenSupported[_tokens[i]], "Token not supported");
             require(_allocations[i] > 0, "Allocation must be greater than 0");
 
@@ -311,10 +270,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Calculate portfolio return percentage using price feed
      */
-    function calculatePortfolioReturn(
-        uint256 _leagueId,
-        address _participant
-    ) public view returns (uint256) {
+    function calculatePortfolioReturn(uint256 _leagueId, address _participant) public view returns (uint256) {
         League storage league = leagues[_leagueId];
         Portfolio storage portfolio = league.portfolios[_participant];
 
@@ -323,13 +279,13 @@ contract TryTrade is ReentrancyGuard, Ownable {
         uint256 totalStartValue = 0;
         uint256 totalEndValue = 0;
 
-        for (uint i = 0; i < portfolio.tokens.length; i++) {
+        for (uint256 i = 0; i < portfolio.tokens.length; i++) {
             string memory token = portfolio.tokens[i];
             uint256 allocation = portfolio.allocations[token];
 
             // Get start and end prices from price feed
-            (uint256 startPrice, ) = priceFeed.getPriceAtTimestamp(token, league.startTime);
-            (uint256 endPrice, ) = priceFeed.getPriceAtTimestamp(token, league.endTime);
+            (uint256 startPrice,) = priceFeed.getPriceAtTimestamp(token, league.startTime);
+            (uint256 endPrice,) = priceFeed.getPriceAtTimestamp(token, league.endTime);
 
             // Get token decimals for proper calculation
             uint8 tokenDecimals = priceFeed.decimals(token);
@@ -355,12 +311,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Finalize league with automatic price fetching from price feed
      */
-    function finalizeLeague(uint256 _leagueId)
-    external
-    onlyOwner
-    leagueExists(_leagueId)
-    nonReentrant
-    {
+    function finalizeLeague(uint256 _leagueId) external onlyOwner leagueExists(_leagueId) nonReentrant {
         League storage league = leagues[_leagueId];
 
         require(league.isActive, "League is not active");
@@ -372,7 +323,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
         address[] memory participants = league.participants;
         uint256[] memory pnls = new uint256[](participants.length);
 
-        for (uint i = 0; i < participants.length; i++) {
+        for (uint256 i = 0; i < participants.length; i++) {
             if (league.portfolios[participants[i]].isSubmitted) {
                 pnls[i] = calculatePortfolioReturn(_leagueId, participants[i]);
                 league.finalScores[participants[i]] = pnls[i];
@@ -387,7 +338,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
 
         // Set winners (top 3)
         league.winners = new address[](3);
-        for (uint i = 0; i < 3 && i < sortedParticipants.length; i++) {
+        for (uint256 i = 0; i < 3 && i < sortedParticipants.length; i++) {
             league.winners[i] = sortedParticipants[i];
         }
 
@@ -398,9 +349,9 @@ contract TryTrade is ReentrancyGuard, Ownable {
         prizes[2] = (league.prizePool * THIRD_PLACE_PERCENTAGE) / 100;
 
         // Distribute prizes
-        for (uint i = 0; i < 3 && i < league.winners.length; i++) {
+        for (uint256 i = 0; i < 3 && i < league.winners.length; i++) {
             if (league.winners[i] != address(0) && prizes[i] > 0) {
-                (bool success, ) = payable(league.winners[i]).call{value: prizes[i]}("");
+                (bool success,) = payable(league.winners[i]).call{ value: prizes[i] }("");
                 require(success, "Prize transfer failed");
 
                 emit PrizeDistributed(_leagueId, league.winners[i], i + 1, prizes[i]);
@@ -416,22 +367,23 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Sort participants by returns (descending order)
      */
-    function _sortParticipantsByReturns(
-        address[] memory _participants,
-        uint256[] memory _pnls
-    ) private pure returns (address[] memory) {
+    function _sortParticipantsByReturns(address[] memory _participants, uint256[] memory _pnls)
+        private
+        pure
+        returns (address[] memory)
+    {
         address[] memory sortedParticipants = new address[](_participants.length);
         uint256[] memory sortedReturns = new uint256[](_pnls.length);
 
         // Copy arrays
-        for (uint i = 0; i < _participants.length; i++) {
+        for (uint256 i = 0; i < _participants.length; i++) {
             sortedParticipants[i] = _participants[i];
             sortedReturns[i] = _pnls[i];
         }
 
         // Simple bubble sort (for MVP - optimize for production)
-        for (uint i = 0; i < sortedReturns.length - 1; i++) {
-            for (uint j = 0; j < sortedReturns.length - i - 1; j++) {
+        for (uint256 i = 0; i < sortedReturns.length - 1; i++) {
+            for (uint256 j = 0; j < sortedReturns.length - i - 1; j++) {
                 if (sortedReturns[j] < sortedReturns[j + 1]) {
                     // Swap returns
                     uint256 tempReturn = sortedReturns[j];
@@ -453,26 +405,25 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Get current price from price feed
      */
     function getCurrentPrice(string memory _asset) external view returns (uint256 price, uint256 timestamp) {
-        (price, timestamp, ) = priceFeed.getLatestPrice(_asset);
+        (price, timestamp,) = priceFeed.getLatestPrice(_asset);
         return (price, timestamp);
     }
 
     /**
      * @dev Get historical price from price feed
      */
-    function getHistoricalPrice(string memory _asset, uint256 _timestamp) external view returns (uint256 price, uint256 timestamp) {
+    function getHistoricalPrice(string memory _asset, uint256 _timestamp)
+        external
+        view
+        returns (uint256 price, uint256 timestamp)
+    {
         return priceFeed.getPriceAtTimestamp(_asset, _timestamp);
     }
 
     /**
      * @dev Get league information
      */
-    function getLeagueInfo(uint256 _leagueId)
-    external
-    view
-    leagueExists(_leagueId)
-    returns (LeagueInfo memory)
-    {
+    function getLeagueInfo(uint256 _leagueId) external view leagueExists(_leagueId) returns (LeagueInfo memory) {
         League storage league = leagues[_leagueId];
 
         return LeagueInfo({
@@ -495,10 +446,10 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Get league participants
      */
     function getLeagueParticipants(uint256 _leagueId)
-    external
-    view
-    leagueExists(_leagueId)
-    returns (address[] memory)
+        external
+        view
+        leagueExists(_leagueId)
+        returns (address[] memory)
     {
         return leagues[_leagueId].participants;
     }
@@ -506,12 +457,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Get league winners
      */
-    function getLeagueWinners(uint256 _leagueId)
-    external
-    view
-    leagueExists(_leagueId)
-    returns (address[] memory)
-    {
+    function getLeagueWinners(uint256 _leagueId) external view leagueExists(_leagueId) returns (address[] memory) {
         require(leagues[_leagueId].isFinalized, "League not finalized");
         return leagues[_leagueId].winners;
     }
@@ -520,10 +466,10 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Get participant's final score
      */
     function getParticipantScore(uint256 _leagueId, address _participant)
-    external
-    view
-    leagueExists(_leagueId)
-    returns (uint256)
+        external
+        view
+        leagueExists(_leagueId)
+        returns (uint256)
     {
         require(leagues[_leagueId].isFinalized, "League not finalized");
         return leagues[_leagueId].finalScores[_participant];
@@ -533,17 +479,17 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Get user's portfolio for a league
      */
     function getUserPortfolio(uint256 _leagueId, address _user)
-    external
-    view
-    leagueExists(_leagueId)
-    returns (string[] memory tokens, uint256[] memory allocations, bool isSubmitted)
+        external
+        view
+        leagueExists(_leagueId)
+        returns (string[] memory tokens, uint256[] memory allocations, bool isSubmitted)
     {
         Portfolio storage portfolio = leagues[_leagueId].portfolios[_user];
 
         tokens = portfolio.tokens;
         allocations = new uint256[](tokens.length);
 
-        for (uint i = 0; i < tokens.length; i++) {
+        for (uint256 i = 0; i < tokens.length; i++) {
             allocations[i] = portfolio.allocations[tokens[i]];
         }
 
@@ -553,27 +499,19 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Get user's leagues
      */
-    function getUserLeagues(address _user)
-    external
-    view
-    returns (uint256[] memory)
-    {
+    function getUserLeagues(address _user) external view returns (uint256[] memory) {
         return userLeagues[_user];
     }
 
     /**
      * @dev Get supported tokens with their contract addresses
      */
-    function getSupportedTokens()
-    external
-    view
-    returns (string[] memory symbols, address[] memory addresses)
-    {
+    function getSupportedTokens() external view returns (string[] memory symbols, address[] memory addresses) {
         symbols = new string[](tokenSymbols.length);
         addresses = new address[](tokenSymbols.length);
 
         uint256 activeCount = 0;
-        for (uint i = 0; i < tokenSymbols.length; i++) {
+        for (uint256 i = 0; i < tokenSymbols.length; i++) {
             if (supportedTokens[tokenSymbols[i]].isActive) {
                 symbols[activeCount] = supportedTokens[tokenSymbols[i]].symbol;
                 addresses[activeCount] = supportedTokens[tokenSymbols[i]].contractAddress;
@@ -591,11 +529,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Get token info by symbol
      */
-    function getTokenInfo(string memory _symbol)
-    external
-    view
-    returns (Token memory)
-    {
+    function getTokenInfo(string memory _symbol) external view returns (Token memory) {
         require(isTokenSupported[_symbol], "Token not supported");
         return supportedTokens[_symbol];
     }
@@ -603,10 +537,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Add supported token (only owner)
      */
-    function addSupportedToken(string memory _symbol, address _contractAddress)
-    external
-    onlyOwner
-    {
+    function addSupportedToken(string memory _symbol, address _contractAddress) external onlyOwner {
         require(!isTokenSupported[_symbol], "Token already supported");
         require(bytes(_symbol).length > 0, "Symbol cannot be empty");
 
@@ -617,17 +548,14 @@ contract TryTrade is ReentrancyGuard, Ownable {
     /**
      * @dev Remove supported token (only owner)
      */
-    function removeSupportedToken(string memory _symbol)
-    external
-    onlyOwner
-    {
+    function removeSupportedToken(string memory _symbol) external onlyOwner {
         require(isTokenSupported[_symbol], "Token not supported");
 
         supportedTokens[_symbol].isActive = false;
         isTokenSupported[_symbol] = false;
 
         // Remove from tokenSymbols array
-        for (uint i = 0; i < tokenSymbols.length; i++) {
+        for (uint256 i = 0; i < tokenSymbols.length; i++) {
             if (keccak256(bytes(tokenSymbols[i])) == keccak256(bytes(_symbol))) {
                 tokenSymbols[i] = tokenSymbols[tokenSymbols.length - 1];
                 tokenSymbols.pop();
@@ -649,7 +577,7 @@ contract TryTrade is ReentrancyGuard, Ownable {
      * @dev Emergency withdraw function (only owner)
      */
     function emergencyWithdraw() external onlyOwner {
-        (bool success, ) = payable(owner()).call{value: address(this).balance}("");
+        (bool success,) = payable(owner()).call{ value: address(this).balance }("");
         require(success, "Emergency withdraw failed");
     }
 }
