@@ -5,9 +5,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "foundry-chainlink-toolkit/lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
- * @title PriceFeed
- * @dev Price feed for testing and development
- * @notice Provides historical and current price data for supported assets
+ * @title Price
+ * @author ahalsudev - christosnon - romispectrum - Sifan23 - sahatayz
+ * @notice Provides mock price feeds for development and testing, and optionally integrates real-time Chainlink feeds.
+ * @dev This contract supports storing custom historical price arrays and retrieving current prices from Chainlink aggregators.
  */
 contract Price is Ownable {
     struct PriceFeed {
@@ -30,11 +31,21 @@ contract Price is Ownable {
     mapping(string => bool) public assetExists;
 
     // Events
-    event PriceFeedCreated(string indexed asset, uint256[] prices, uint256 startTimestamp, uint256 intervalSeconds);
+    event PriceFeedCreated(
+        string indexed asset,
+        uint256[] prices,
+        uint256 startTimestamp,
+        uint256 intervalSeconds
+    );
 
     event PriceFeedUpdated(string indexed asset, uint256[] newPrices);
 
-    event PriceRequested(string indexed asset, uint256 timestamp, uint256 price, uint256 roundId);
+    event PriceRequested(
+        string indexed asset,
+        uint256 timestamp,
+        uint256 price,
+        uint256 roundId
+    );
 
     // Modifiers
     modifier assetSupported(string memory _asset) {
@@ -45,8 +56,10 @@ contract Price is Ownable {
 
     constructor() Ownable(msg.sender) {
         // Initialize with Sepolia addresses (USD)
-        priceFeeds["ETH"].feedAddress = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
-        priceFeeds["BTC"].feedAddress = 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43;
+        priceFeeds["ETH"]
+            .feedAddress = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
+        priceFeeds["BTC"]
+            .feedAddress = 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43;
 
         // Set decimals
         priceFeeds["ETH"].feedDecimals = 8;
@@ -54,13 +67,15 @@ contract Price is Ownable {
     }
 
     /**
-     * @dev Create a new price feed for an asset
+     * @notice Creates a new price feed for a given asset symbol
+     * @dev Stores a list of historical prices and metadata including Chainlink integration and update intervals
      * @param _asset Asset symbol (e.g., "ETH", "BTC")
+     * @param _feedAddress Address of the Chainlink feed for live prices
      * @param _prices Array of historical prices
-     * @param _startTimestamp Starting timestamp for the price feed
-     * @param _intervalSeconds Time interval between each price point
-     * @param _decimals Number of decimals for price precision
-     * @param _description Description of the price feed
+     * @param _startTimestamp Unix timestamp for the first historical price
+     * @param _intervalSeconds Seconds between each historical price point
+     * @param _decimals Number of decimals used by this feed
+     * @param _description Description for the feed
      */
     function createPriceFeed(
         string memory _asset,
@@ -88,7 +103,12 @@ contract Price is Ownable {
         supportedAssets.push(_asset);
         assetExists[_asset] = true;
 
-        emit PriceFeedCreated(_asset, _prices, _startTimestamp, _intervalSeconds);
+        emit PriceFeedCreated(
+            _asset,
+            _prices,
+            _startTimestamp,
+            _intervalSeconds
+        );
     }
 
     /**
@@ -96,11 +116,10 @@ contract Price is Ownable {
      * @param _asset Asset symbol
      * @param _newPrices New array of prices
      */
-    function updatePriceFeed(string memory _asset, uint256[] memory _newPrices)
-        external
-        onlyOwner
-        assetSupported(_asset)
-    {
+    function updatePriceFeed(
+        string memory _asset,
+        uint256[] memory _newPrices
+    ) external onlyOwner assetSupported(_asset) {
         require(_newPrices.length > 0, "Prices array cannot be empty");
 
         priceFeeds[_asset].prices = _newPrices;
@@ -115,7 +134,10 @@ contract Price is Ownable {
      * @return price Price at the given timestamp
      * @return timestamp Actual timestamp of the price data point
      */
-    function getPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+    function getPriceAtTimestamp(
+        string memory _asset,
+        uint256 _timestamp
+    )
         external
         view
         assetSupported(_asset)
@@ -137,31 +159,39 @@ contract Price is Ownable {
             index = feed.prices.length - 1;
         }
 
-        uint256 priceTimestamp = feed.startTimestamp + (index * feed.intervalSeconds);
+        uint256 priceTimestamp = feed.startTimestamp +
+            (index * feed.intervalSeconds);
 
         // Removed the event emission since this is a view function
         return (feed.prices[index], priceTimestamp);
     }
 
     /**
-     * @dev Get the latest price (current time)
+     * @notice Returns the latest price from the Chainlink feed
+     * @dev Uses Chainlink AggregatorV3Interface to fetch latest data
      * @param _asset Asset symbol
-     * @return price Latest price
+     * @return price Latest price value
      * @return timestamp Timestamp of the latest price
-     * @return roundId Round ID for Chainlink compatibility
+     * @return roundId Round ID associated with the price
      */
-    function getLatestPrice(string memory _asset)
+    function getLatestPrice(
+        string memory _asset
+    )
         external
         view
         assetSupported(_asset)
         returns (uint256 price, uint256 timestamp, uint256 roundId)
     {
         address feedAddress = priceFeeds[_asset].feedAddress;
-        require(feedAddress != address(0), "Price feed not available for this asset");
+        require(
+            feedAddress != address(0),
+            "Price feed not available for this asset"
+        );
 
         AggregatorV3Interface priceFeed = AggregatorV3Interface(feedAddress);
-        
-        (uint80 _roundId, int256 _price,, uint256 _timestamp,) = priceFeed.latestRoundData();
+
+        (uint80 _roundId, int256 _price, , uint256 _timestamp, ) = priceFeed
+            .latestRoundData();
 
         require(_price > 0, "Invalid price data");
 
@@ -171,7 +201,10 @@ contract Price is Ownable {
     /**
      * @dev Internal function to get price at timestamp with round ID
      */
-    function _getPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+    function _getPriceAtTimestamp(
+        string memory _asset,
+        uint256 _timestamp
+    )
         internal
         view
         returns (uint256 price, uint256 timestamp, uint256 roundId)
@@ -203,7 +236,10 @@ contract Price is Ownable {
      * @return price Price at the given timestamp
      * @return timestamp Actual timestamp of the price data point
      */
-    function requestPriceAtTimestamp(string memory _asset, uint256 _timestamp)
+    function requestPriceAtTimestamp(
+        string memory _asset,
+        uint256 _timestamp
+    )
         external
         assetSupported(_asset)
         returns (uint256 price, uint256 timestamp)
@@ -222,9 +258,15 @@ contract Price is Ownable {
             index = feed.prices.length - 1;
         }
 
-        uint256 priceTimestamp = feed.startTimestamp + (index * feed.intervalSeconds);
+        uint256 priceTimestamp = feed.startTimestamp +
+            (index * feed.intervalSeconds);
 
-        emit PriceRequested(_asset, priceTimestamp, feed.prices[index], index + 1);
+        emit PriceRequested(
+            _asset,
+            priceTimestamp,
+            feed.prices[index],
+            index + 1
+        );
         return (feed.prices[index], priceTimestamp);
     }
 
@@ -238,7 +280,9 @@ contract Price is Ownable {
      * @return intervalSeconds Interval between prices
      * @return isActive Whether feed is active
      */
-    function getFeedInfo(string memory _asset)
+    function getFeedInfo(
+        string memory _asset
+    )
         external
         view
         assetSupported(_asset)
@@ -267,7 +311,9 @@ contract Price is Ownable {
      * @param _asset Asset symbol
      * @return Array of all prices
      */
-    function getAllPrices(string memory _asset) external view assetSupported(_asset) returns (uint256[] memory) {
+    function getAllPrices(
+        string memory _asset
+    ) external view assetSupported(_asset) returns (uint256[] memory) {
         return priceFeeds[_asset].prices;
     }
 
@@ -295,7 +341,9 @@ contract Price is Ownable {
      * @param _asset Asset symbol
      * @return Number of decimals
      */
-    function decimals(string memory _asset) external view assetSupported(_asset) returns (uint8) {
+    function decimals(
+        string memory _asset
+    ) external view assetSupported(_asset) returns (uint8) {
         return priceFeeds[_asset].feedDecimals;
     }
 
@@ -304,7 +352,9 @@ contract Price is Ownable {
      * @param _asset Asset symbol
      * @return Feed description
      */
-    function description(string memory _asset) external view assetSupported(_asset) returns (string memory) {
+    function description(
+        string memory _asset
+    ) external view assetSupported(_asset) returns (string memory) {
         return priceFeeds[_asset].feedDescription;
     }
 
@@ -317,14 +367,32 @@ contract Price is Ownable {
      * @return updatedAt Updated timestamp
      * @return answeredInRound Answered in round
      */
-    function latestRoundData(string memory _asset)
+    function latestRoundData(
+        string memory _asset
+    )
         external
         view
         assetSupported(_asset)
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        )
     {
-        (uint256 price, uint256 timestamp, uint256 round) = _getPriceAtTimestamp(_asset, block.timestamp);
+        (
+            uint256 price,
+            uint256 timestamp,
+            uint256 round
+        ) = _getPriceAtTimestamp(_asset, block.timestamp);
 
-        return (uint80(round), int256(price), timestamp, timestamp, uint80(round));
+        return (
+            uint80(round),
+            int256(price),
+            timestamp,
+            timestamp,
+            uint80(round)
+        );
     }
 }
