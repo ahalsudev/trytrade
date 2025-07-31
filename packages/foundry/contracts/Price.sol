@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "foundry-chainlink-toolkit/script/feeds/DataFeed.s.sol";
+import "foundry-chainlink-toolkit/lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title PriceFeed
@@ -152,15 +152,16 @@ contract Price is Ownable {
      */
     function getLatestPrice(string memory _asset)
         external
+        view
         assetSupported(_asset)
         returns (uint256 price, uint256 timestamp, uint256 roundId)
     {
         address feedAddress = priceFeeds[_asset].feedAddress;
         require(feedAddress != address(0), "Price feed not available for this asset");
 
-        DataFeedsScript dataFeed = new DataFeedsScript(feedAddress);
-
-        (uint80 _roundId, int256 _price,, uint256 _timestamp,) = dataFeed.getLatestRoundData();
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(feedAddress);
+        
+        (uint80 _roundId, int256 _price,, uint256 _timestamp,) = priceFeed.latestRoundData();
 
         require(_price > 0, "Invalid price data");
 
