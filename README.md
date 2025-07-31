@@ -1,5 +1,3 @@
-# 🏗 Scaffold-ETH 2
-
 # TryTrade - Decentralized Fantasy Trading Platform
 
 ## Overview
